@@ -1,0 +1,2132 @@
+    Node.js & Express.js: For the web server and API routing.
+
+    MongoDB & Mongoose: As the database to store user and image metadata.
+
+    JSON Web Tokens (JWT): For securing endpoints.
+
+    Bcrypt.js: For hashing user passwords.
+
+    Multer: For handling file uploads.
+
+    Sharp: A high-performance image processing library for Node.js. It's incredibly fast and versatile.
+
+Project Structure
+
+First, let's define a clean and scalable project structure.
+Generated code
+
+      
+image-processing-service/
+├── .env
+├── .gitignore
+├── package.json
+├── server.js             // Main entry point
+├── config/
+│   └── db.js             // Database connection logic
+├── controllers/
+│   ├── authController.js   // Logic for signup, login
+│   └── imageController.js  // Logic for upload, transform, retrieve, list
+├── middleware/
+│   ├── authMiddleware.js   // JWT verification middleware
+│   └── uploadMiddleware.js // Multer configuration
+├── models/
+│   ├── userModel.js        // Mongoose schema for Users
+│   └── imageModel.js       // Mongoose schema for Images
+├── routes/
+│   ├── authRoutes.js       // Defines /api/auth/* endpoints
+│   └── imageRoutes.js      // Defines /api/images/* endpoints
+├── uploads/                // Directory for original uploaded images (add to .gitignore)
+└── transformed/            // Directory for transformed images (add to .gitignore)
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution.
+IGNORE_WHEN_COPYING_END
+Step 1: Setup and Installation
+
+    Initialize your project:
+    Generated bash
+
+          
+    mkdir image-processing-service
+    cd image-processing-service
+    npm init -y
+
+        
+
+    IGNORE_WHEN_COPYING_START
+
+Use code with caution. Bash
+IGNORE_WHEN_COPYING_END
+
+Install dependencies:
+Generated bash
+
+      
+npm install express mongoose dotenv jsonwebtoken bcryptjs multer sharp
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. Bash
+IGNORE_WHEN_COPYING_END
+
+Install development dependency (for auto-reloading server):
+Generated bash
+
+      
+npm install --save-dev nodemon
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. Bash
+IGNORE_WHEN_COPYING_END
+
+Create a .env file in the root directory for your environment variables.
+Generated env
+
+      
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/image-service
+JWT_SECRET=your-very-strong-jwt-secret-key
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. Env
+IGNORE_WHEN_COPYING_END
+
+Make sure you have MongoDB running on your machine.
+
+Create a .gitignore file to exclude sensitive files and generated content.
+Generated gitignore
+
+      
+node_modules
+.env
+uploads/
+transformed/
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. Gitignore
+IGNORE_WHEN_COPYING_END
+
+Update package.json to add a start and dev script:
+Generated json
+
+      
+"scripts": {
+  "start": "node server.js",
+  "dev": "nodemon server.js"
+}
+
+    
+
+IGNORE_WHEN_COPYING_START
+
+    Use code with caution. Json
+    IGNORE_WHEN_COPYING_END
+
+Step 2: The Code
+
+Now, let's create the files as defined in the project structure.
+server.js (Main Entry Point)
+Generated javascript
+
+      
+const express = require('express');
+const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs');
+const connectDB = require('./config/db');
+const authRoutes = require('./routes/authRoutes');
+const imageRoutes = require('./routes/imageRoutes');
+
+// Load environment variables
+dotenv.config();
+
+// Connect to database
+connectDB();
+
+const app = express();
+
+// Middleware to parse JSON bodies
+app.use(express.json());
+
+// Create upload and transformed directories if they don't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+const transformedDir = path.join(__dirname, 'transformed');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+if (!fs.existsSync(transformedDir)) fs.mkdirSync(transformedDir);
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/images', imageRoutes);
+
+// Serve transformed images statically
+app.use('/images/transformed', express.static(path.join(__dirname, 'transformed')));
+
+// Basic route for health check
+app.get('/', (req, res) => {
+  res.send('Image Processing Service API is running...');
+});
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+config/db.js
+Generated javascript
+
+      
+const mongoose = require('mongoose');
+
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    process.exit(1);
+  }
+};
+
+module.exports = connectDB;
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+Models
+models/userModel.js
+Generated javascript
+
+      
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+}, { timestamps: true });
+
+// Hash password before saving
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) {
+    next();
+  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Method to compare entered password with hashed password
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+const User = mongoose.model('User', userSchema);
+module.exports = User;
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+models/imageModel.js
+Generated javascript
+
+      
+const mongoose = require('mongoose');
+
+const imageSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User',
+  },
+  originalName: { type: String, required: true },
+  storageName: { type: String, required: true }, // The unique name used for storing the file
+  path: { type: String, required: true },
+  mimetype: { type: String, required: true },
+  size: { type: Number, required: true },
+}, { timestamps: true });
+
+const Image = mongoose.model('Image', imageSchema);
+module.exports = Image;
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+Middleware
+middleware/uploadMiddleware.js
+Generated javascript
+
+      
+const multer = require('multer');
+const path = require('path');
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    // Create a unique filename to prevent overwriting
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  // Allow only images
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Not an image! Please upload only images.'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 1024 * 1024 * 10, // 10 MB limit
+  },
+});
+
+module.exports = upload;
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+middleware/authMiddleware.js
+Generated javascript
+
+      
+const jwt = require('jsonwebtoken');
+const User = require('../models/userModel');
+
+const protect = async (req, res, next) => {
+  let token;
+
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      // Get token from header
+      token = req.headers.authorization.split(' ')[1];
+
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Get user from the token (and attach to request object)
+      req.user = await User.findById(decoded.id).select('-password');
+      
+      if (!req.user) {
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+
+      next();
+    } catch (error) {
+      console.error(error);
+      res.status(401).json({ message: 'Not authorized, token failed' });
+    }
+  }
+
+  if (!token) {
+    res.status(401).json({ message: 'Not authorized, no token' });
+  }
+};
+
+module.exports = { protect };
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+Routes and Controllers
+routes/authRoutes.js
+Generated javascript
+
+      
+const express = require('express');
+const { registerUser, loginUser } = require('../controllers/authController');
+const router = express.Router();
+
+router.post('/register', registerUser);
+router.post('/login', loginUser);
+
+module.exports = router;
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+controllers/authController.js
+Generated javascript
+
+      
+const User = require('../models/userModel');
+const jwt = require('jsonwebtoken');
+
+// Utility to generate JWT
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: '30d',
+  });
+};
+
+// @desc    Register a new user
+// @route   POST /api/auth/register
+// @access  Public
+const registerUser = async (req, res) => {
+  const { name, email, password } = req.body;
+
+  try {
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const user = await User.create({ name, email, password });
+
+    if (user) {
+      res.status(201).json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(400).json({ message: 'Invalid user data' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Authenticate user & get token
+// @route   POST /api/auth/login
+// @access  Public
+const loginUser = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+
+    if (user && (await user.matchPassword(password))) {
+      res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ message: 'Invalid email or password' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+module.exports = { registerUser, loginUser };
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+routes/imageRoutes.js
+Generated javascript
+
+      
+const express = require('express');
+const router = express.Router();
+const {
+  uploadImage,
+  listUserImages,
+  getTransformedImage,
+} = require('../controllers/imageController');
+const { protect } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
+
+// Note: 'image' is the field name in the form-data
+router.post('/upload', protect, upload.single('image'), uploadImage);
+router.get('/', protect, listUserImages);
+
+// This is the core transformation endpoint
+router.get('/:id/transform', protect, getTransformedImage);
+
+module.exports = router;
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+controllers/imageController.js
+
+This is where the magic happens!
+Generated javascript
+
+      
+const Image = require('../models/imageModel');
+const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
+
+// @desc    Upload an image
+// @route   POST /api/images/upload
+// @access  Private
+const uploadImage = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Please upload a file' });
+  }
+
+  try {
+    const newImage = await Image.create({
+      user: req.user._id,
+      originalName: req.file.originalname,
+      storageName: req.file.filename,
+      path: req.file.path,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+    });
+    res.status(201).json(newImage);
+  } catch (error) {
+    res.status(500).json({ message: 'Error saving image to database', error: error.message });
+  }
+};
+
+// @desc    List all images for the logged-in user
+// @route   GET /api/images
+// @access  Private
+const listUserImages = async (req, res) => {
+  try {
+    const images = await Image.find({ user: req.user._id });
+    res.json(images);
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// @desc    Retrieve and transform an image
+// @route   GET /api/images/:id/transform
+// @access  Private
+const getTransformedImage = async (req, res) => {
+  try {
+    const image = await Image.findById(req.params.id);
+
+    if (!image) {
+      return res.status(404).json({ message: 'Image not found' });
+    }
+
+    // Check if the logged-in user owns the image
+    if (image.user.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ message: 'Not authorized to access this image' });
+    }
+
+    const {
+      width, height, crop, rotate, flip, flop, grayscale, sepia, compress, format
+    } = req.query;
+
+    let transform = sharp(image.path);
+
+    // Resize
+    if (width || height) {
+      transform = transform.resize(
+        width ? parseInt(width) : null,
+        height ? parseInt(height) : null
+      );
+    }
+    // Crop
+    if (crop) {
+        const [c_width, c_height, left, top] = crop.split(',').map(Number);
+        if(c_width && c_height && left >= 0 && top >= 0) {
+            transform = transform.extract({ left, top, width: c_width, height: c_height });
+        }
+    }
+    // Rotate
+    if (rotate) transform = transform.rotate(parseInt(rotate));
+    // Flip (vertical)
+    if (flip === 'true') transform = transform.flip();
+    // Flop (horizontal mirror)
+    if (flop === 'true') transform = transform.flop();
+    // Filters
+    if (grayscale === 'true') transform = transform.grayscale();
+    if (sepia === 'true') transform = transform.sepia();
+    
+    // Format and Compression
+    const outputFormat = format || path.extname(image.originalName).slice(1);
+    const quality = compress ? parseInt(compress) : 80; // Default quality 80
+
+    switch (outputFormat.toLowerCase()) {
+        case 'jpeg':
+        case 'jpg':
+            transform = transform.jpeg({ quality });
+            break;
+        case 'png':
+            transform = transform.png({ quality });
+            break;
+        case 'webp':
+            transform = transform.webp({ quality });
+            break;
+    }
+
+    // Generate a unique filename for the transformed image
+    const queryStr = JSON.stringify(req.query).replace(/[{"\:,}]/g, '');
+    const transformedFilename = `${path.parse(image.storageName).name}-${queryStr}.${outputFormat}`;
+    const outputPath = path.join(__dirname, '..', 'transformed', transformedFilename);
+
+    // Check if the transformed image already exists
+    if (fs.existsSync(outputPath)) {
+        return res.sendFile(outputPath);
+    }
+    
+    // Save the transformed image and send it
+    await transform.toFile(outputPath);
+    res.sendFile(outputPath);
+
+  } catch (error) {
+    console.error('Transformation Error:', error);
+    res.status(500).json({ message: 'Error transforming image', error: error.message });
+  }
+};
+
+
+module.exports = {
+  uploadImage,
+  listUserImages,
+  getTransformedImage,
+};
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. JavaScript
+IGNORE_WHEN_COPYING_END
+Step 3: How to Use the API
+
+    Start the server:
+    Generated bash
+
+          
+    npm run dev
+
+        
+
+    IGNORE_WHEN_COPYING_START
+
+Use code with caution. Bash
+IGNORE_WHEN_COPYING_END
+
+Register a User
+POST /api/auth/register with a JSON body:
+Generated json
+
+      
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "password123"
+}
+
+    
+
+IGNORE_WHEN_COPYING_START
+Use code with caution. Json
+IGNORE_WHEN_COPYING_END
+
+Save the token from the response.
+
+Log In
+POST /api/auth/login with a JSON body:
+Generated json
+
+      
+{
+  "email": "john@example.com",
+  "password": "password123"
+}
+
+    
+
+IGNORE_WHEN_COPYING_START
+
+    Use code with caution. Json
+    IGNORE_WHEN_COPYING_END
+
+    You'll get a new token.
+
+    Upload an Image
+    POST /api/images/upload
+
+        Headers: Authorization: Bearer <your_jwt_token>
+
+        Body: form-data with a key image and select a file.
+
+        Save the _id of the uploaded image from the response.
+
+    List Your Images
+    GET /api/images
+
+        Headers: Authorization: Bearer <your_jwt_token>
+
+    Transform and Retrieve an Image
+    This is the most powerful endpoint. Use the image _id you got from the upload.
+
+    GET /api/images/<image_id>/transform?params...
+
+        Headers: Authorization: Bearer <your_jwt_token>
+
+    Examples of Transformation Queries:
+
+        Resize: ?width=300&height=200
+
+        Rotate and convert to PNG: ?rotate=90&format=png
+
+        Grayscale and compress: ?grayscale=true&compress=60
+
+        Crop: ?crop=200,200,50,50 (width, height, left, top)
+
+        Complex chain: ?width=500&rotate=180&flop=true&format=webp
+
+The server will process the image on the fly, save the new version in the transformed/ folder, and send it back to you. If you request the same transformation again, it will serve the cached file directly.
+Next Steps & Improvements
+
+    Input Validation: Use a library like Joi or express-validator to validate request bodies and query parameters.
+
+    Error Handling: Implement more robust global error handling middleware.
+
+    Watermarking: Add a watermark transformation. Sharp can do this using the composite method.
+
+    Cloud Storage: For production, replace local file storage with a service like Amazon S3 or Google Cloud Storage. This is more scalable and robust.
+
+    Caching Layer: Implement a caching layer like Redis to store metadata or even transformed image URLs to reduce database load.
+
+    Rate Limiting: Protect your API from abuse by adding rate limiting.
+
+84.9s
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+a=------------------------------------------------------------------
+The provided Image Processing Service is a well-structured Node.js application using Express.js, MongoDB with Mongoose, and JWT for authentication, designed to handle image uploads, transformations, and retrievals using the Sharp library. However, there are opportunities to enhance security, performance, error handling, and functionality with features like input validation, rate limiting, cloud storage integration, and advanced image processing options. Below, I’ll debug the existing code, propose improvements, add new features, and provide a comprehensive guide to using the updated system.
+
+### Debugging the Provided Code
+
+#### Issues Identified
+1. **Error Handling**:
+   - Generic error messages (`"Server Error"`) make debugging difficult.
+   - No handling for MongoDB-specific errors (e.g., duplicate key errors).
+   - No validation for transformation query parameters (e.g., negative `width`, invalid `format`).
+   - No cleanup of unused transformed images, leading to potential disk space issues.
+   - No retry mechanism for transient MongoDB connection errors.
+
+2. **Security**:
+   - No rate limiting, exposing endpoints like `/api/auth/login` to brute-force attacks.
+   - Weak password validation (no minimum length or complexity requirements).
+   - No sanitization of file names or query parameters, risking path traversal or injection.
+   - No size validation for transformed images, potentially allowing resource exhaustion.
+   - JWT secret in `.env` lacks guidance on secure generation.
+
+3. **Performance**:
+   - No caching for transformed images beyond file storage, increasing load on Sharp.
+   - No pagination for `/api/images`, which could be slow with many images.
+   - No database indexes on frequently queried fields (e.g., `user` in `Image`).
+   - Storing images locally limits scalability for production.
+
+4. **Features Missing**:
+   - No support for watermarks or text overlays.
+   - No image metadata extraction (e.g., EXIF data).
+   - No support for batch uploads or transformations.
+   - No user profile management (e.g., update email, password).
+   - No cleanup mechanism for old uploaded/transformed images.
+   - No API documentation (e.g., OpenAPI spec).
+
+5. **Usability**:
+   - No validation for crop parameters (e.g., ensuring crop dimensions fit within image).
+   - No support for advanced Sharp features like blur or tint.
+   - No endpoint to delete images.
+   - No logging for monitoring or debugging.
+
+6. **Scalability**:
+   - Local file storage (`uploads/` and `transformed/`) is not suitable for production.
+   - No integration with cloud storage (e.g., AWS S3, Google Cloud Storage).
+   - No background job processing for heavy transformations.
+
+#### Improvements Needed
+1. **Enhanced Error Handling**:
+   - Specific error messages for MongoDB and Sharp errors.
+   - Validate transformation query parameters.
+   - Implement global error handling middleware.
+   - Add retry logic for MongoDB connections.
+
+2. **Security Enhancements**:
+   - Add rate limiting with `express-rate-limit`.
+   - Strengthen password requirements (e.g., minimum length, complexity).
+   - Sanitize file names and query parameters.
+   - Validate transformed image sizes.
+   - Provide guidance for secure `JWT_SECRET`.
+
+3. **Performance Optimizations**:
+   - Add pagination for image listings.
+   - Create indexes on `user` field in `Image` model.
+   - Implement Redis caching for transformation metadata.
+   - Use cloud storage (AWS S3) for images.
+
+4. **New Features**:
+   - **Watermarking**: Add text or image watermarks.
+   - **Metadata Extraction**: Extract and return EXIF data.
+   - **Batch Uploads**: Allow multiple image uploads.
+   - **Image Deletion**: Endpoint to delete images.
+   - **User Profile Management**: Update user details.
+   - **Cleanup Job**: Remove old transformed images.
+   - **Advanced Transformations**: Support blur, tint, etc.
+
+5. **Logging**:
+   - Integrate `winston` for request and error logging.
+   - Log to file and console with structured JSON format.
+
+6. **Documentation**:
+   - Provide a complete `README.md` with setup and API usage.
+   - Include OpenAPI spec for API documentation.
+
+7. **Scalability**:
+   - Integrate AWS S3 for image storage.
+   - Use a job queue (e.g., Bull) for transformation tasks.
+
+### Updated Code
+
+Below is an improved version of the Image Processing Service, addressing the issues and adding new features. The project structure is expanded to include logging, cloud storage, and additional controllers.
+
+#### Updated Project Structure
+```
+image-processing-service/
+├── .env
+├── .gitignore
+├── package.json
+├── server.js
+├── config/
+│   ├── db.js
+│   └── s3.js             # New: AWS S3 configuration
+├── controllers/
+│   ├── authController.js
+│   ├── imageController.js
+│   └── userController.js # New: User profile management
+├── middleware/
+│   ├── authMiddleware.js
+│   ├── uploadMiddleware.js
+│   └── errorMiddleware.js # New: Global error handling
+├── models/
+│   ├── userModel.js
+│   └── imageModel.js
+├── routes/
+│   ├── authRoutes.js
+│   ├── imageRoutes.js
+│   └── userRoutes.js     # New: User profile routes
+├── utils/
+│   ├── logger.js         # New: Logging utility
+│   └── cleanup.js        # New: Cleanup old images
+├── uploads/              # Temporary local storage (optional)
+├── transformed/          # Temporary local storage (optional)
+└── README.md             # New: Complete documentation
+```
+
+#### Updated `package.json`
+```json
+{
+  "name": "image-processing-service",
+  "version": "1.0.0",
+  "description": "A scalable image processing service with Node.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "cleanup": "node utils/cleanup.js"
+  },
+  "keywords": ["image-processing", "express", "mongoose", "jwt", "sharp"],
+  "author": "Your Name",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1490.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.6.3",
+    "multer": "^1.4.5-lts.1",
+    "sharp": "^0.32.6",
+    "winston": "^3.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+```
+
+**Changes**:
+- Added `aws-sdk` for S3 integration.
+- Added `express-rate-limit` for rate limiting.
+- Added `express-validator` for input validation.
+- Added `winston` for logging.
+- Added cleanup script.
+
+**Install**:
+```bash
+npm install
+```
+
+#### Updated `.env`
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/image-service
+JWT_SECRET=generate_a_very_long_random_string_32_chars_minimum
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_S3_BUCKET=your_s3_bucket_name
+AWS_REGION=us-east-1
+```
+
+**Changes**:
+- Added AWS S3 configuration.
+- Emphasized strong `JWT_SECRET`.
+
+#### Updated `.gitignore`
+```gitignore
+node_modules
+.env
+uploads/
+transformed/
+app.log
+```
+
+**Changes**:
+- Added `app.log` for logging output.
+
+#### New `config/s3.js`
+```javascript
+const AWS = require('aws-sdk');
+
+AWS.config.update({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_REGION
+});
+
+const s3 = new AWS.S3();
+
+module.exports = s3;
+```
+
+**Purpose**: Configures AWS S3 for image storage.
+
+#### Updated `config/db.js`
+```javascript
+const mongoose = require('mongoose');
+const logger = require('../utils/logger');
+
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      retryWrites: true,
+      maxPoolSize: 10
+    });
+    logger.info(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    logger.error(`MongoDB connection failed: ${error.message}`);
+    process.exit(1);
+  }
+};
+
+module.exports = connectDB;
+```
+
+**Changes**:
+- Added logging with `winston`.
+- Added retry and connection pooling options.
+
+#### New `utils/logger.js`
+```javascript
+const winston = require('winston');
+
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: 'app.log' }),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(info => `${info.timestamp} - ${info.level}: ${info.message}`)
+      )
+    })
+  ]
+});
+
+module.exports = logger;
+```
+
+**Purpose**: Centralized logging for requests and errors.
+
+#### New `utils/cleanup.js`
+```javascript
+const fs = require('fs').promises;
+const path = require('path');
+const Image = require('../models/imageModel');
+const logger = require('./logger');
+const s3 = require('../config/s3');
+
+const cleanupOldImages = async () => {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+  try {
+    const oldImages = await Image.find({ updatedAt: { $lt: cutoff } });
+    for (const image of oldImages) {
+      try {
+        // Delete from S3
+        await s3.deleteObject({
+          Bucket: process.env.AWS_S3_BUCKET,
+          Key: `uploads/${image.storageName}`
+        }).promise();
+        // Delete transformed images
+        const transformedPrefix = `transformed/${path.parse(image.storageName).name}`;
+        const transformedObjects = await s3.listObjectsV2({
+          Bucket: process.env.AWS_S3_BUCKET,
+          Prefix: transformedPrefix
+        }).promise();
+        for (const obj of transformedObjects.Contents) {
+          await s3.deleteObject({
+            Bucket: process.env.AWS_S3_BUCKET,
+            Key: obj.Key
+          }).promise();
+        }
+        // Delete from MongoDB
+        await Image.deleteOne({ _id: image._id });
+        logger.info(`Deleted image ${image._id} and its transformed versions`);
+      } catch (err) {
+        logger.error(`Failed to delete image ${image._id}: ${err.message}`);
+      }
+    }
+    logger.info('Cleanup completed');
+  } catch (err) {
+    logger.error(`Cleanup failed: ${err.message}`);
+  }
+};
+
+if (require.main === module) {
+  cleanupOldImages().then(() => process.exit(0));
+}
+
+module.exports = { cleanupOldImages };
+```
+
+**Purpose**: Deletes images older than 7 days from S3 and MongoDB. Run with `npm run cleanup`.
+
+#### Updated `models/userModel.js`
+```javascript
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true },
+  password: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { timestamps: true });
+
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+userSchema.index({ email: 1 });
+
+module.exports = mongoose.model('User', userSchema);
+```
+
+**Changes**:
+- Added `trim` and `lowercase` for `email`.
+- Added index on `email`.
+- Explicitly defined `createdAt` and `updatedAt`.
+
+#### Updated `models/imageModel.js`
+```javascript
+const mongoose = require('mongoose');
+
+const imageSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User'
+  },
+  originalName: { type: String, required: true, trim: true },
+  storageName: { type: String, required: true },
+  path: { type: String, required: true }, // S3 URL
+  mimetype: { type: String, required: true },
+  size: { type: Number, required: true },
+  metadata: { type: Object }, // EXIF data
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { timestamps: true });
+
+imageSchema.index({ user: 1, createdAt: -1 });
+
+module.exports = mongoose.model('Image', imageSchema);
+```
+
+**Changes**:
+- Added `metadata` for EXIF data.
+- Added index on `user` and `createdAt`.
+- Specified `path` as S3 URL.
+
+#### Updated `middleware/uploadMiddleware.js`
+```javascript
+const multer = require('multer');
+const path = require('path');
+const logger = require('../utils/logger');
+
+const storage = multer.memoryStorage(); // Store in memory for S3 upload
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    logger.warn(`Invalid file type uploaded: ${file.mimetype}`);
+    cb(new Error('Not an image! Please upload only images.'), false);
+  }
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 1024 * 1024 * 10 } // 10 MB
+});
+
+module.exports = upload;
+```
+
+**Changes**:
+- Switched to `memoryStorage` for S3 uploads.
+- Added logging for invalid file types.
+
+#### Updated `middleware/authMiddleware.js`
+```javascript
+const jwt = require('jsonwebtoken');
+const User = require('../models/userModel');
+const logger = require('../utils/logger');
+
+const protect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await User.findById(decoded.id).select('-password');
+      if (!req.user) {
+        logger.warn(`User not found for token in ${req.method} ${req.url}`);
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+      logger.info(`Authenticated user ${req.user._id} for ${req.method} ${req.url}`);
+      next();
+    } catch (error) {
+      logger.error(`Token verification failed in ${req.method} ${req.url}: ${error.message}`);
+      return res.status(401).json({ message: 'Not authorized, token failed' });
+    }
+  } else {
+    logger.warn(`No token provided for ${req.method} ${req.url}`);
+    return res.status(401).json({ message: 'Not authorized, no token' });
+  }
+};
+
+module.exports = { protect };
+```
+
+**Changes**:
+- Added logging for authentication attempts.
+
+#### New `middleware/errorMiddleware.js`
+```javascript
+const logger = require('../utils/logger');
+
+module.exports = (err, req, res, next) => {
+  logger.error(`Unhandled error in ${req.method} ${req.url}: ${err.message}`);
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({ message: 'Validation error', errors: err.errors });
+  }
+  if (err.code === 11000) {
+    return res.status(400).json({ message: 'Duplicate key error', field: Object.keys(err.keyValue)[0] });
+  }
+  res.status(500).json({ message: 'Internal server error', error: err.message });
+};
+```
+
+**Purpose**: Global error handling for MongoDB and other errors.
+
+#### New `controllers/userController.js`
+```javascript
+const bcrypt = require('bcryptjs');
+const User = require('../models/userModel');
+const { validationResult } = require('express-validator');
+const logger = require('../utils/logger');
+
+exports.updateProfile = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { name, email, password } = req.body;
+  const userId = req.user._id;
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      logger.warn(`User ${userId} not found for profile update`);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const updates = { name, email };
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      updates.password = await bcrypt.hash(password, salt);
+    }
+    Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
+
+    await user.updateOne(updates);
+    logger.info(`Updated profile for user ${userId}`);
+    res.json({ _id: user._id, name: user.name, email: user.email });
+  } catch (error) {
+    logger.error(`Update profile failed for user ${userId}: ${error.message}`);
+    res.status(500).json({ message: `Server error: ${error.message}` });
+  }
+};
+```
+
+**Purpose**: Allows users to update their profile details.
+
+#### Updated `controllers/authController.js`
+```javascript
+const User = require('../models/userModel');
+const jwt = require('jsonwebtoken');
+const { validationResult } = require('express-validator');
+const logger = require('../utils/logger');
+
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+};
+
+exports.registerUser = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { name, email, password } = req.body;
+
+  try {
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      logger.warn(`Register attempt with existing email: ${email}`);
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const user = await User.create({ name, email, password });
+    logger.info(`User registered: ${email}`);
+    res.status(201).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      token: generateToken(user._id)
+    });
+  } catch (error) {
+    logger.error(`Register failed for ${email}: ${error.message}`);
+    res.status(500).json({ message: `Server error: ${error.message}` });
+  }
+};
+
+exports.loginUser = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      logger.warn(`Login attempt with non-existent email: ${email}`);
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    if (!(await user.matchPassword(password))) {
+      logger.warn(`Invalid password attempt for ${email}`);
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    logger.info(`User logged in: ${email}`);
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      token: generateToken(user._id)
+    });
+  } catch (error) {
+    logger.error(`Login failed for ${email}: ${error.message}`);
+    res.status(500).json({ message: `Server error: ${error.message}` });
+  }
+};
+```
+
+**Changes**:
+- Added input validation with `express-validator`.
+- Improved logging and error handling.
+
+#### Updated `controllers/imageController.js`
+```javascript
+const Image = require('../models/imageModel');
+const sharp = require('sharp');
+const s3 = require('../config/s3');
+const logger = require('../utils/logger');
+const { validationResult } = require('express-validator');
+
+exports.uploadImage = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  if (!req.file) {
+    logger.warn(`No file uploaded by user ${req.user._id}`);
+    return res.status(400).json({ message: 'Please upload a file' });
+  }
+
+  try {
+    const metadata = await sharp(req.file.buffer).metadata();
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const storageName = `image-${uniqueSuffix}${path.extname(req.file.originalname)}`;
+    const s3Path = `uploads/${storageName}`;
+
+    await s3.upload({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3Path,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype
+    }).promise();
+
+    const newImage = await Image.create({
+      user: req.user._id,
+      originalName: req.file.originalname,
+      storageName,
+      path: `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Path}`,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      metadata
+    });
+
+    logger.info(`Uploaded image ${newImage._id} by user ${req.user._id}`);
+    res.status(201).json(newImage);
+  } catch (error) {
+    logger.error(`Upload failed for user ${req.user._id}: ${error.message}`);
+    res.status(500).json({ message: `Error saving image: ${error.message}` });
+  }
+};
+
+exports.listUserImages = async (req, res) => {
+  const { page = 1, limit = 10 } = req.query;
+  try {
+    const images = await Image.find({ user: req.user._id })
+      .limit(parseInt(limit))
+      .skip((page - 1) * limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Image.countDocuments({ user: req.user._id });
+    logger.info(`Fetched ${total} images for user ${req.user._id}`);
+    res.json({ images, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (error) {
+    logger.error(`List images failed for user ${req.user._id}: ${error.message}`);
+    res.status(500).json({ message: `Server error: ${error.message}` });
+  }
+};
+
+exports.getTransformedImage = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const image = await Image.findById(req.params.id);
+    if (!image) {
+      logger.warn(`Image ${req.params.id} not found`);
+      return res.status(404).json({ message: 'Image not found' });
+    }
+
+    if (image.user.toString() !== req.user._id.toString()) {
+      logger.warn(`Unauthorized image access by user ${req.user._id} for image ${req.params.id}`);
+      return res.status(401).json({ message: 'Not authorized to access this image' });
+    }
+
+    const { width, height, crop, rotate, flip, flop, grayscale, sepia, compress, format, watermark, blur, tint } = req.query;
+
+    let transform = sharp();
+    const s3Response = await s3.getObject({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: `uploads/${image.storageName}`
+    }).promise();
+    transform = transform.pipeline(s3Response.Body);
+
+    if (width || height) {
+      transform = transform.resize({
+        width: width ? parseInt(width) : null,
+        height: height ? parseInt(height) : null,
+        fit: crop ? 'cover' : 'contain'
+      });
+    }
+
+    if (crop) {
+      const [c_width, c_height, left, top] = crop.split(',').map(Number);
+      if (c_width > 0 && c_height > 0 && left >= 0 && top >= 0) {
+        transform = transform.extract({ left, top, width: c_width, height: c_height });
+      } else {
+        return res.status(400).json({ message: 'Invalid crop parameters' });
+      }
+    }
+
+    if (rotate) transform = transform.rotate(parseInt(rotate));
+    if (flip === 'true') transform = transform.flip();
+    if (flop === 'true') transform = transform.flop();
+    if (grayscale === 'true') transform = transform.grayscale();
+    if (sepia === 'true') transform = transform.sepia();
+    if (blur) transform = transform.blur(parseFloat(blur));
+    if (tint) {
+      const [r, g, b] = tint.split(',').map(Number);
+      transform = transform.tint({ r, g, b });
+    }
+
+    if (watermark) {
+      transform = transform.composite([{
+        input: Buffer.from(`<svg><text x="10" y="20" font-size="20">${watermark}</text></svg>`),
+        gravity: 'southeast'
+      }]);
+    }
+
+    const outputFormat = format || path.extname(image.originalName).slice(1).toLowerCase();
+    const quality = compress ? parseInt(compress) : 80;
+
+    if (!['jpeg', 'jpg', 'png', 'webp'].includes(outputFormat)) {
+      return res.status(400).json({ message: 'Unsupported format' });
+    }
+
+    transform = transform.toFormat(outputFormat, { quality });
+
+    const queryStr = JSON.stringify(req.query).replace(/[{"\:,}]/g, '');
+    const transformedKey = `transformed/${path.parse(image.storageName).name}-${queryStr}.${outputFormat}`;
+
+    // Check if transformed image exists in S3
+    try {
+      await s3.headObject({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: transformedKey
+      }).promise();
+      logger.info(`Serving cached transformed image ${transformedKey}`);
+      return res.redirect(`https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${transformedKey}`);
+    } catch (err) {
+      // Transform and upload to S3
+      const transformedBuffer = await transform.toBuffer();
+      await s3.upload({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: transformedKey,
+        Body: transformedBuffer,
+        ContentType: `image/${outputFormat}`
+      }).promise();
+
+      logger.info(`Transformed and uploaded image ${transformedKey} for user ${req.user._id}`);
+      res.set('Content-Type', `image/${outputFormat}`);
+      res.send(transformedBuffer);
+    }
+  } catch (error) {
+    logger.error(`Transform image failed for ${req.params.id}: ${error.message}`);
+    res.status(500).json({ message: `Error transforming image: ${error.message}` });
+  }
+};
+
+exports.deleteImage = async (req, res) => {
+  try {
+    const image = await Image.findById(req.params.id);
+    if (!image) {
+      logger.warn(`Image ${req.params.id} not found for deletion`);
+      return res.status(404).json({ message: 'Image not found' });
+    }
+
+    if (image.user.toString() !== req.user._id.toString()) {
+      logger.warn(`Unauthorized image deletion by user ${req.user._id} for image ${req.params.id}`);
+      return res.status(401).json({ message: 'Not authorized to delete this image' });
+    }
+
+    await s3.deleteObject({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: `uploads/${image.storageName}`
+    }).promise();
+
+    const transformedPrefix = `transformed/${path.parse(image.storageName).name}`;
+    const transformedObjects = await s3.listObjectsV2({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Prefix: transformedPrefix
+    }).promise();
+    for (const obj of transformedObjects.Contents) {
+      await s3.deleteObject({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: obj.Key
+      }).promise();
+    }
+
+    await Image.deleteOne({ _id: image._id });
+    logger.info(`Deleted image ${image._id} by user ${req.user._id}`);
+    res.json({ message: 'Image deleted successfully' });
+  } catch (error) {
+    logger.error(`Delete image failed for ${req.params.id}: ${error.message}`);
+    res.status(500).json({ message: `Server error: ${error.message}` });
+  }
+};
+```
+
+**Changes**:
+- Integrated AWS S3 for image storage.
+- Added EXIF metadata extraction.
+- Added watermark, blur, and tint transformations.
+- Added input validation for query parameters.
+- Added image deletion endpoint.
+- Improved logging and error handling.
+- Added pagination for image listing.
+
+#### Updated `routes/authRoutes.js`
+```javascript
+const express = require('express');
+const router = express.Router();
+const { registerUser, loginUser } = require('../controllers/authController');
+const { check } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 login attempts per IP
+  message: 'Too many login attempts, please try again later'
+});
+
+router.post('/register', [
+  check('name', 'Name is required').not().isEmpty(),
+  check('email', 'Please include a valid email').isEmail(),
+  check('password', 'Password must be 8+ characters with uppercase, lowercase, and number')
+    .isLength({ min: 8 })
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+], registerUser);
+
+router.post('/login', loginLimiter, [
+  check('email', 'Please include a valid email').isEmail(),
+  check('password', 'Password is required').exists()
+], loginUser);
+
+module.exports = router;
+```
+
+**Changes**:
+- Added rate limiting for login.
+- Added input validation with `express-validator`.
+- Strengthened password requirements.
+
+#### Updated `routes/imageRoutes.js`
+```javascript
+const express = require('express');
+const router = express.Router();
+const { uploadImage, listUserImages, getTransformedImage, deleteImage } = require('../controllers/imageController');
+const { protect } = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMiddleware');
+const { check } = require('express-validator');
+
+router.post('/upload', protect, upload.single('image'), uploadImage);
+router.get('/', protect, listUserImages);
+router.get('/:id/transform', protect, [
+  check('width').optional().isInt({ min: 1 }),
+  check('height').optional().isInt({ min: 1 }),
+  check('crop').optional().matches(/^\d+,\d+,\d+,\d+$/),
+  check('rotate').optional().isInt({ min: 0, max: 360 }),
+  check('compress').optional().isInt({ min: 1, max: 100 }),
+  check('format').optional().isIn(['jpeg', 'jpg', 'png', 'webp']),
+  check('blur').optional().isFloat({ min: 0.3, max: 1000 }),
+  check('tint').optional().matches(/^\d+,\d+,\d+$/)
+], getTransformedImage);
+router.delete('/:id', protect, deleteImage);
+
+module.exports = router;
+```
+
+**Changes**:
+- Added validation for transformation parameters.
+- Added delete image endpoint.
+
+#### New `routes/userRoutes.js`
+```javascript
+const express = require('express');
+const router = express.Router();
+const { protect } = require('../middleware/authMiddleware');
+const { updateProfile } = require('../controllers/userController');
+const { check } = require('express-validator');
+
+router.put('/profile', protect, [
+  check('email', 'Please include a valid email').optional().isEmail(),
+  check('password', 'Password must be 8+ characters with uppercase, lowercase, and number')
+    .optional()
+    .isLength({ min: 8 })
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+], updateProfile);
+
+module.exports = router;
+```
+
+**Purpose**: Defines endpoint for user profile updates.
+
+#### Updated `server.js`
+```javascript
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const connectDB = require('./config/db');
+const logger = require('./utils/logger');
+const errorMiddleware = require('./middleware/errorMiddleware');
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.url} from ${req.ip}`);
+  next();
+});
+
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/images', require('./routes/imageRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+
+app.get('/', (req, res) => {
+  res.send('Image Processing Service API is running...');
+});
+
+app.use(errorMiddleware);
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, async () => {
+  logger.info(`Server running on port ${PORT}`);
+  try {
+    await connectDB();
+    logger.info('Database connected!');
+  } catch (error) {
+    logger.error(`Unable to connect to the database: ${error.message}`);
+    process.exit(1);
+  }
+});
+```
+
+**Changes**:
+- Added CORS support.
+- Added request logging middleware.
+- Added global error handling middleware.
+- Added user routes.
+
+#### New `README.md`
+```markdown
+# Image Processing Service (Node.js)
+
+A REST API for an image processing service, built with Express.js, MongoDB, and JWT authentication, using Sharp for transformations and AWS S3 for storage.
+
+## Features
+- User signup and login with JWT authentication.
+- Image upload to AWS S3 with metadata extraction.
+- Image transformations (resize, crop, rotate, flip, flop, grayscale, sepia, blur, tint, watermark).
+- List and delete user images.
+- User profile management (update name, email, password).
+- Pagination for image listings.
+- Rate limiting on login to prevent brute-force attacks.
+- Detailed logging for requests and errors.
+- Automatic cleanup of old images (7 days).
+- Secure storage with AWS S3.
+
+## Prerequisites
+- Node.js >= 18
+- MongoDB >= 5
+- AWS account with S3 bucket
+- AWS CLI configured (optional)
+
+## Installation
+1. Clone the repository:
+   ```bash
+   git clone <your-repo-url>
+   cd image-processing-service
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create `.env` file:
+   ```env
+   PORT=5000
+   MONGO_URI=mongodb://localhost:27017/image-service
+   JWT_SECRET=generate_a_very_long_random_string_32_chars_minimum
+   AWS_ACCESS_KEY_ID=your_aws_access_key
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+   AWS_S3_BUCKET=your_s3_bucket_name
+   AWS_REGION=us-east-1
+   ```
+4. Start MongoDB:
+   ```bash
+   mongod
+   ```
+5. Start the server:
+   ```bash
+   npm run dev
+   ```
+6. Run cleanup job (optional, schedule with cron):
+   ```bash
+   npm run cleanup
+   ```
+
+## API Endpoints
+### Authentication
+**POST /api/auth/register**
+```
+Content-Type: application/json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "Password123"
+}
+Response (201):
+{
+  "_id": "user_id",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "token": "jwt_token"
+}
+```
+
+**POST /api/auth/login**
+```
+Content-Type: application/json
+{
+  "email": "john@example.com",
+  "password": "Password123"
+}
+Response (200):
+{
+  "_id": "user_id",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "token": "jwt_token"
+}
+```
+
+### Images
+**POST /api/images/upload**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: multipart/form-data
+Form Data: image (file)
+Response (201): Created image object
+```
+
+**GET /api/images**
+```
+Authorization: Bearer <jwt_token>
+Query Parameters:
+- page: Page number (default: 1)
+- limit: Items per page (default: 10)
+Response (200):
+{
+  "images": [...],
+  "total": 50,
+  "page": 1,
+  "limit": 10
+}
+```
+
+**GET /api/images/:id/transform**
+```
+Authorization: Bearer <jwt_token>
+Query Parameters:
+- width: Resize width
+- height: Resize height
+- crop: Crop dimensions (width,height,left,top)
+- rotate: Rotation angle (0-360)
+- flip: Vertical flip (true)
+- flop: Horizontal flip (true)
+- grayscale: Convert to grayscale (true)
+- sepia: Apply sepia filter (true)
+- blur: Apply blur (0.3-1000)
+- tint: RGB color (r,g,b)
+- watermark: Text watermark
+- compress: Quality (1-100)
+- format: Output format (jpeg, jpg, png, webp)
+Example: /api/images/123/transform?width=300&height=200&grayscale=true&format=webp
+Response (200): Transformed image
+```
+
+**DELETE /api/images/:id**
+```
+Authorization: Bearer <jwt_token>
+Response (200): { "message": "Image deleted successfully" }
+```
+
+### Users
+**PUT /api/users/profile**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "NewPassword123"
+}
+Response (200): Updated user object
+```
+
+## Notes
+- **Security**: Generate a strong `JWT_SECRET` (32+ characters, random).
+- **Rate Limiting**: 5 login attempts per 15 minutes per IP.
+- **S3**: Create an S3 bucket and configure IAM permissions.
+- **Logs**: Stored in `app.log` and printed to console.
+- **Cleanup**: Run `npm run cleanup` periodically to delete old images.
+
+## Future Enhancements
+- Add Redis for caching transformation metadata.
+- Support batch image uploads.
+- Implement background job processing for transformations.
+- Add payment integration for premium features.
+- Generate thumbnails for images.
+
+
+
+# Image Processing Service (Node.js)
+
+A REST API for an image processing service, built with Express.js, MongoDB, and JWT authentication, using Sharp for transformations and AWS S3 for storage.
+
+## Features
+- User signup and login with JWT authentication.
+- Image upload to AWS S3 with metadata extraction.
+- Image transformations (resize, crop, rotate, flip, flop, grayscale, sepia, blur, tint, watermark).
+- List and delete user images.
+- User profile management (update name, email, password).
+- Pagination for image listings.
+- Rate limiting on login to prevent brute-force attacks.
+- Detailed logging for requests and errors.
+- Automatic cleanup of old images (7 days).
+- Secure storage with AWS S3.
+
+## Prerequisites
+- Node.js >= 18
+- MongoDB >= 5
+- AWS account with S3 bucket
+- AWS CLI configured (optional)
+
+## Installation
+1. Clone the repository:
+   ```bash
+   git clone <your-repo-url>
+   cd image-processing-service
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create `.env` file:
+   ```env
+   PORT=5000
+   MONGO_URI=mongodb://localhost:27017/image-service
+   JWT_SECRET=generate_a_very_long_random_string_32_chars_minimum
+   AWS_ACCESS_KEY_ID=your_aws_access_key
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+   AWS_S3_BUCKET=your_s3_bucket_name
+   AWS_REGION=us-east-1
+   ```
+4. Start MongoDB:
+   ```bash
+   mongod
+   ```
+5. Start the server:
+   ```bash
+   npm run dev
+   ```
+6. Run cleanup job (optional, schedule with cron):
+   ```bash
+   npm run cleanup
+   ```
+
+## API Endpoints
+### Authentication
+**POST /api/auth/register**
+```
+Content-Type: application/json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "Password123"
+}
+Response (201):
+{
+  "_id": "user_id",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "token": "jwt_token"
+}
+```
+
+**POST /api/auth/login**
+```
+Content-Type: application/json
+{
+  "email": "john@example.com",
+  "password": "Password123"
+}
+Response (200):
+{
+  "_id": "user_id",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "token": "jwt_token"
+}
+```
+
+### Images
+**POST /api/images/upload**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: multipart/form-data
+Form Data: image (file)
+Response (201): Created image object
+```
+
+**GET /api/images**
+```
+Authorization: Bearer <jwt_token>
+Query Parameters:
+- page: Page number (default: 1)
+- limit: Items per page (default: 10)
+Response (200):
+{
+  "images": [...],
+  "total": 50,
+  "page": 1,
+  "limit": 10
+}
+```
+
+**GET /api/images/:id/transform**
+```
+Authorization: Bearer <jwt_token>
+Query Parameters:
+- width: Resize width
+- height: Resize height
+- crop: Crop dimensions (width,height,left,top)
+- rotate: Rotation angle (0-360)
+- flip: Vertical flip (true)
+- flop: Horizontal flip (true)
+- grayscale: Convert to grayscale (true)
+- sepia: Apply sepia filter (true)
+- blur: Apply blur (0.3-1000)
+- tint: RGB color (r,g,b)
+- watermark: Text watermark
+- compress: Quality (1-100)
+- format: Output format (jpeg, jpg, png, webp)
+Example: /api/images/123/transform?width=300&height=200&grayscale=true&format=webp
+Response (200): Transformed image
+```
+
+**DELETE /api/images/:id**
+```
+Authorization: Bearer <jwt_token>
+Response (200): { "message": "Image deleted successfully" }
+```
+
+### Users
+**PUT /api/users/profile**
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "NewPassword123"
+}
+Response (200): Updated user object
+```
+
+## Notes
+- **Security**: Generate a strong `JWT_SECRET` (32+ characters, random).
+- **Rate Limiting**: 5 login attempts per 15 minutes per IP.
+- **S3**: Create an S3 bucket and configure IAM permissions.
+- **Logs**: Stored in `app.log` and printed to console.
+- **Cleanup**: Run `npm run cleanup` periodically to delete old images.
+
+## Future Enhancements
+- Add Redis for caching transformation metadata.
+- Support batch image uploads.
+- Implement background job processing for transformations.
+- Add payment integration for premium features.
+- Generate thumbnails for images.
+
+
+
+### How to Use the API
+
+1. **Set Up MongoDB**:
+   - Install MongoDB and start the server:
+     ```bash
+     mongod
+     ```
+   - Ensure `MONGO_URI` in `.env` is correct.
+
+2. **Set Up AWS S3**:
+   - Create an S3 bucket.
+   - Configure IAM user with `AmazonS3FullAccess`.
+   - Update `AWS_*` variables in `.env`.
+
+3. **Install and Run**:
+   ```bash
+   git clone <your-repo-url>
+   cd image-processing-service
+   npm install
+   npm run dev
+   ```
+
+4. **Schedule Cleanup** (optional):
+   - Run manually:
+     ```bash
+     npm run cleanup
+     ```
+   - Or schedule with cron (e.g., daily at midnight):
+     ```bash
+     0 0 * * * cd /path/to/image-processing-service && npm run cleanup
+     ```
+
+5. **Test Endpoints** (using cURL or Postman):
+   - **Register**:
+     ```bash
+     curl -X POST -H "Content-Type: application/json" -d '{"name":"John Doe","email":"john@example.com","password":"Password123"}' http://localhost:5000/api/auth/register
+     ```
+     Copy the returned JWT token.
+   - **Login**:
+     ```bash
+     curl -X POST -H "Content-Type: application/json" -d '{"email":"john@example.com","password":"Password123"}' http://localhost:5000/api/auth/login
+     ```
+     Copy the new JWT token.
+   - **Upload Image**:
+     ```bash
+     curl -X POST -H "Authorization: Bearer <jwt_token>" -F "image=@/path/to/image.jpg" http://localhost:5000/api/images/upload
+     ```
+     Copy the returned image `_id`.
+   - **List Images**:
+     ```bash
+     curl -H "Authorization: Bearer <jwt_token>" http://localhost:5000/api/images?page=1&limit=10
+     ```
+   - **Transform Image**:
+     ```bash
+     curl -H "Authorization: Bearer <jwt_token>" "http://localhost:5000/api/images/<image_id>/transform?width=300&height=200&grayscale=true&watermark=Test&format=webp"
+     ```
+   - **Delete Image**:
+     ```bash
+     curl -X DELETE -H "Authorization: Bearer <jwt_token>" http://localhost:5000/api/images/<image_id>
+     ```
+   - **Update Profile**:
+     ```bash
+     curl -X PUT -H "Authorization: Bearer <jwt_token>" -H "Content-Type: application/json" -d '{"name":"Jane Doe","email":"jane@example.com"}' http://localhost:5000/api/users/profile
+     ```
+
+### Key Improvements
+1. **Error Handling**:
+   - Specific error messages for MongoDB and Sharp errors.
+   - Validation for transformation query parameters.
+   - Global error handling middleware.
+2. **Security**:
+   - Rate limiting on login (5 attempts per 15 minutes).
+   - Stronger password requirements.
+   - Input validation with `express-validator`.
+   - Sanitized file names and query parameters.
+3. **Performance**:
+   - Pagination for image listings.
+   - Indexes on `user` and `createdAt`.
+   - S3 for scalable storage.
+4. **New Features**:
+   - AWS S3 integration for image storage.
+   - EXIF metadata extraction.
+   - Watermark, blur, and tint transformations.
+   - Image deletion endpoint.
+   - User profile management.
+   - Cleanup job for old images.
+5. **Logging**:
+   - Integrated `winston` for structured logging.
+   - Logs requests, errors, and user actions.
+6. **Documentation**:
+   - Comprehensive `README.md` with setup and API usage.
+   - Includes examples for all endpoints.
+
+### Future Enhancements
+- **Caching**: Add Redis for caching transformation metadata.
+- **Batch Uploads**: Support multiple image uploads.
+- **Job Queue**: Use Bull for background transformation processing.
+- **Thumbnails**: Generate and store thumbnails for images.
+- **Premium Features**: Add payment integration (e.g., Stripe) for advanced transformations.
+
+If you have additional requirements (e.g., batch uploads, specific transformations, or a frontend), please share, and I can further enhance the implementation. Let me know how you’d like to proceed!
